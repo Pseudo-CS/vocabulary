@@ -1,0 +1,148 @@
+Build a simple Android vocabulary-learning app using Kotlin and Jetpack Compose.
+
+The purpose of the app is to help users learn English vocabulary through daily notifications and contextual example sentences.
+
+## Core Features
+
+### Vocabulary List
+
+Users can:
+
+* Add words manually
+* Edit words
+* Delete words
+* Import words from a TXT file (one word per line)
+
+Example:
+
+```text
+serendipity
+ubiquitous
+tenuous
+pragmatic
+```
+
+Store all words locally on the device.
+
+---
+
+### Daily Vocabulary Notification
+
+Once per day, at a user-configurable time:
+
+1. Select a random word from the user's vocabulary list.
+2. Fetch contextual example sentences(random, not the same sentence everytime).
+3. Show an Android notification containing:
+
+   * The word
+   * 1 example sentences
+
+Example:
+
+```text
+Word of the Day
+
+SERENDIPITY
+
+• Meeting her at the conference was pure serendipity.
+```
+
+Tapping the notification should open the app and show the word details.
+
+---
+
+### Example Sentence Sources
+
+The user should be able to choose the sentence source from Settings.
+
+Options:
+
+#### Wordnik
+
+Use the user's Wordnik API key.
+
+Fetch real-world example sentences for the selected word.
+
+Display the  examples.
+
+---
+
+#### Gemini
+
+Use the user's Gemini API key.
+
+Prompt Gemini to generate natural example sentences.
+
+Use the following prompt:
+
+```text
+Generate 1 short, natural example sentences using the word:
+
+<WORD>
+
+Requirements:
+- Modern English
+- Realistic situations
+- Different contexts
+- One sentence per line
+
+Return only the sentences.
+```
+
+Display the returned examples.
+
+---
+
+### Settings Screen
+
+Include:
+
+* Notification time
+* Sentence source selector:
+
+  * Wordnik
+  * Gemini
+* Wordnik API key field
+* Gemini API key field
+
+Persist settings locally.
+
+---
+
+### Word Details Screen
+
+Display:
+
+* Word
+* Example sentences
+* Source used (Wordnik or Gemini)
+* Refresh button to fetch new examples
+
+
+
+---
+
+### UI Requirements
+
+Keep the UI extremely simple:
+
+Tabs:
+
+1. Vocabulary
+2. Settings
+
+Vocabulary Screen:
+
+* Search words
+* Add word button
+* Word list
+
+Settings Screen:
+
+* Notification time
+* Sentence source
+* API keys
+
+Focus on functionality rather than visual complexity.
+
+Generate production-ready code with clear architecture and comments where necessary.
