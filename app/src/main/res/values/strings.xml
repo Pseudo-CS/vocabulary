@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vocabulary</string>
+    <string name="notification_channel_name">Word of the Day</string>
+    <string name="notification_channel_description">Daily vocabulary word notifications</string>
+</resources>
