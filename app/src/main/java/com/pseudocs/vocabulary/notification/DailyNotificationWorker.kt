@@ -100,7 +100,7 @@ class DailyNotificationWorker @AssistedInject constructor(
         // Build the body: show the sentence directly, or a clear fallback
         val isNetworkAvailable = isNetworkAvailable(context)
         val bodyText = if (!sentence.isNullOrBlank()) {
-            "• $sentence"
+            sentence
         } else if (!isNetworkAvailable) {
             "Tap to see details. (Offline — could not fetch example sentence)"
         } else {
