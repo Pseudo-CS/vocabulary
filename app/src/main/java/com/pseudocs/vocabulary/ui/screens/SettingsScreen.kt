@@ -23,6 +23,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pseudocs.vocabulary.data.local.SentenceSource
 import com.pseudocs.vocabulary.ui.theme.*
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 /**
  * Settings screen for configuring notification time, sentence source, and API keys.
@@ -34,6 +41,21 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     var showTimePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.toggleNotifications(true)
+        } else {
+            android.widget.Toast.makeText(
+                context,
+                "Notification permission is required to receive daily words.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -90,7 +112,26 @@ fun SettingsScreen(
                     }
                     Switch(
                         checked = settings.notificationsEnabled,
-                        onCheckedChange = viewModel::toggleNotifications,
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    
+                                    if (hasPermission) {
+                                        viewModel.toggleNotifications(true)
+                                    } else {
+                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                } else {
+                                    viewModel.toggleNotifications(true)
+                                }
+                            } else {
+                                viewModel.toggleNotifications(false)
+                            }
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = OnPrimary,
                             checkedTrackColor = Primary
@@ -107,7 +148,7 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = settings.notificationsEnabled) {
+                        .clickable {
                             showTimePicker = true
                         }
                         .padding(16.dp),
@@ -118,7 +159,7 @@ fun SettingsScreen(
                         Text(
                             "Notification Time",
                             style = MaterialTheme.typography.titleMedium,
-                            color = if (settings.notificationsEnabled) OnSurface else OnSurfaceVariant
+                            color = OnSurface
                         )
                         Text(
                             "Tap to change time",

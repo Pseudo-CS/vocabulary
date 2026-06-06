@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
@@ -46,7 +48,16 @@ class DailyNotificationWorker @AssistedInject constructor(
             Log.d("VocabWorker", "doWork: isManual=$isManual, source=${settings.sentenceSource}, geminiKeyBlank=${settings.geminiApiKey.isBlank()}, wordnikKeyBlank=${settings.wordnikApiKey.isBlank()}, notificationsEnabled=${settings.notificationsEnabled}")
             if (!isManual && !settings.notificationsEnabled) return Result.success()
 
-            val word = wordRepository.getRandomWord() ?: return Result.success()
+            // Re-schedule for tomorrow at the same time if this is not a manual trigger
+            if (!isManual) {
+                scheduleTomorrow(context, settings.notificationHour, settings.notificationMinute)
+            }
+
+            val word = wordRepository.getRandomWord()
+            if (word == null) {
+                Log.d("VocabWorker", "No words available in the repository.")
+                return Result.success()
+            }
             Log.d("VocabWorker", "Selected word: ${word.word}")
 
             // Fetch sentence based on the configured source with automatic fallbacks
@@ -54,11 +65,6 @@ class DailyNotificationWorker @AssistedInject constructor(
             Log.d("VocabWorker", "Fetched sentence: $sentence")
 
             showNotification(word.word, sentence?.text, word.id)
-
-            // Re-schedule for tomorrow at the same time if this is not a manual trigger
-            if (!isManual) {
-                scheduleTomorrow(context, settings.notificationHour, settings.notificationMinute)
-            }
 
             Result.success()
         } catch (e: Exception) {
@@ -92,8 +98,11 @@ class DailyNotificationWorker @AssistedInject constructor(
         )
 
         // Build the body: show the sentence directly, or a clear fallback
+        val isNetworkAvailable = isNetworkAvailable(context)
         val bodyText = if (!sentence.isNullOrBlank()) {
             "• $sentence"
+        } else if (!isNetworkAvailable) {
+            "Tap to see details. (Offline — could not fetch example sentence)"
         } else {
             "No API key configured — add one in Settings to get example sentences."
         }
@@ -114,6 +123,14 @@ class DailyNotificationWorker @AssistedInject constructor(
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
+    private fun isNetworkAvailable(context: Context): Boolean {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
     companion object {
         const val WORK_TAG = "daily_vocabulary_notification"
 
@@ -131,21 +148,21 @@ class DailyNotificationWorker @AssistedInject constructor(
         /**
          * Schedule the worker to run once at the given hour/minute.
          */
-        fun schedule(context: Context, hour: Int, minute: Int) {
+        fun schedule(
+            context: Context,
+            hour: Int,
+            minute: Int,
+            policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE
+        ) {
             val delay = calculateDelayMillis(hour, minute)
             val request = OneTimeWorkRequestBuilder<DailyNotificationWorker>()
                 .setInitialDelay(delay, TimeUnit.MILLISECONDS)
                 .addTag(WORK_TAG)
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build()
-                )
                 .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_TAG,
-                ExistingWorkPolicy.REPLACE,
+                policy,
                 request
             )
         }

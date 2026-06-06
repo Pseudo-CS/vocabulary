@@ -35,7 +35,7 @@ data class AppSettings(
     val sentenceSource: String = SentenceSource.GEMINI.name,
     val wordnikApiKey: String = "",
     val geminiApiKey: String = "",
-    val notificationsEnabled: Boolean = true
+    val notificationsEnabled: Boolean = false
 )
 
 enum class SentenceSource {
@@ -58,7 +58,7 @@ class SettingsDataStore @Inject constructor(
                 sentenceSource = prefs[SettingsKeys.SENTENCE_SOURCE] ?: SentenceSource.GEMINI.name,
                 wordnikApiKey = prefs[SettingsKeys.WORDNIK_API_KEY] ?: "",
                 geminiApiKey = prefs[SettingsKeys.GEMINI_API_KEY] ?: "",
-                notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: true
+                notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: false
             )
         }
 
