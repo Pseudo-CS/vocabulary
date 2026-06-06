@@ -131,6 +131,8 @@ class SentenceRepository @Inject constructor() {
     }
 
     private val httpClient = OkHttpClient.Builder()
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
         .addInterceptor(loggingInterceptor)
         .build()
 

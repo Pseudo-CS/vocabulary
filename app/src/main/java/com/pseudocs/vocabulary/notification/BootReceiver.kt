@@ -25,14 +25,19 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
+        val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
-            val settings = settingsDataStore.settingsFlow.first()
-            if (settings.notificationsEnabled) {
-                DailyNotificationWorker.schedule(
-                    context,
-                    settings.notificationHour,
-                    settings.notificationMinute
-                )
+            try {
+                val settings = settingsDataStore.settingsFlow.first()
+                if (settings.notificationsEnabled) {
+                    DailyNotificationWorker.schedule(
+                        context,
+                        settings.notificationHour,
+                        settings.notificationMinute
+                    )
+                }
+            } finally {
+                pendingResult.finish()
             }
         }
     }

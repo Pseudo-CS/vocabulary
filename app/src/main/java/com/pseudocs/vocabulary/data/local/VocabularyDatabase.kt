@@ -7,7 +7,7 @@ import com.pseudocs.vocabulary.data.model.Word
 /**
  * Room database for the Vocabulary app.
  */
-@Database(entities = [Word::class], version = 1, exportSchema = false)
+@Database(entities = [Word::class], version = 2, exportSchema = false)
 abstract class VocabularyDatabase : RoomDatabase() {
     abstract fun wordDao(): WordDao
 }

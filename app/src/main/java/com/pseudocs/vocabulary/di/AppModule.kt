@@ -28,7 +28,9 @@ object AppModule {
             context,
             VocabularyDatabase::class.java,
             "vocabulary_database"
-        ).build()
+        )
+        .fallbackToDestructiveMigration()
+        .build()
 
     @Provides
     @Singleton

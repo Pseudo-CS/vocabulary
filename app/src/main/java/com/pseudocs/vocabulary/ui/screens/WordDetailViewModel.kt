@@ -1,5 +1,8 @@
 package com.pseudocs.vocabulary.ui.screens
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pseudocs.vocabulary.data.local.SentenceSource
@@ -9,6 +12,7 @@ import com.pseudocs.vocabulary.data.model.Word
 import com.pseudocs.vocabulary.data.repository.SentenceRepository
 import com.pseudocs.vocabulary.data.repository.WordRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -34,7 +38,8 @@ data class WordDetailUiState(
 class WordDetailViewModel @Inject constructor(
     private val wordRepository: WordRepository,
     private val sentenceRepository: SentenceRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WordDetailUiState())
@@ -63,6 +68,15 @@ class WordDetailViewModel @Inject constructor(
 
     private suspend fun fetchDefinition(wordText: String) {
         _uiState.update { it.copy(isLoadingDefinition = true, definitionError = null) }
+        if (!isNetworkAvailable()) {
+            _uiState.update {
+                it.copy(
+                    isLoadingDefinition = false,
+                    definitionError = "Device is offline. Please check your internet connection."
+                )
+            }
+            return
+        }
         val settings = settingsDataStore.settingsFlow.first()
 
         val definitionResult = sentenceRepository.fetchDefinitionWithFallback(wordText, settings)
@@ -80,6 +94,15 @@ class WordDetailViewModel @Inject constructor(
 
     private suspend fun fetchSentence(wordText: String) {
         _uiState.update { it.copy(isLoading = true, error = null) }
+        if (!isNetworkAvailable()) {
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    error = "Device is offline. Please check your internet connection."
+                )
+            }
+            return
+        }
         val settings = settingsDataStore.settingsFlow.first()
 
         val sentence = sentenceRepository.fetchSentenceWithFallback(wordText, settings.sentenceSource, settings)
@@ -92,5 +115,13 @@ class WordDetailViewModel @Inject constructor(
                 sourceLabel = sentence?.source ?: ""
             )
         }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }
