@@ -13,6 +13,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.pseudocs.vocabulary.MainActivity
 import com.pseudocs.vocabulary.R
+import com.pseudocs.vocabulary.data.local.AppSettings
 import com.pseudocs.vocabulary.data.local.SentenceSource
 import com.pseudocs.vocabulary.data.local.SettingsDataStore
 import com.pseudocs.vocabulary.data.repository.SentenceRepository
@@ -64,7 +65,7 @@ class DailyNotificationWorker @AssistedInject constructor(
             val sentence = sentenceRepository.fetchSentenceWithFallback(word.word, settings.sentenceSource, settings)
             Log.d("VocabWorker", "Fetched sentence: $sentence")
 
-            showNotification(word.word, sentence?.text, word.id)
+            showNotification(word.word, sentence?.text, word.id, settings)
 
             Result.success()
         } catch (e: Exception) {
@@ -72,7 +73,7 @@ class DailyNotificationWorker @AssistedInject constructor(
         }
     }
 
-    private fun showNotification(word: String, sentence: String?, wordId: Long) {
+    private fun showNotification(word: String, sentence: String?, wordId: Long, settings: AppSettings) {
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -104,7 +105,17 @@ class DailyNotificationWorker @AssistedInject constructor(
         } else if (!isNetworkAvailable) {
             "Tap to see details. (Offline — could not fetch example sentence)"
         } else {
-            "No API key configured — add one in Settings to get example sentences."
+            val preferredSource = settings.sentenceSource
+            val isKeyMissing = when (preferredSource) {
+                SentenceSource.GEMINI.name -> settings.geminiApiKey.isBlank()
+                SentenceSource.WORDNIK.name -> settings.wordnikApiKey.isBlank()
+                else -> false
+            }
+            if (isKeyMissing) {
+                "No API key configured for $preferredSource — add one in Settings to get example sentences."
+            } else {
+                "Tap to see details. (Could not fetch example sentence)"
+            }
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -124,11 +135,16 @@ class DailyNotificationWorker @AssistedInject constructor(
     }
 
     private fun isNetworkAvailable(context: Context): Boolean {
-        val connectivityManager =
-            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val activeNetwork = connectivityManager.activeNetwork ?: return false
-        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return try {
+            val connectivityManager =
+                context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val activeNetwork = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (e: Exception) {
+            Log.w("VocabWorker", "Failed to check network availability, assuming online", e)
+            true
+        }
     }
 
     companion object {

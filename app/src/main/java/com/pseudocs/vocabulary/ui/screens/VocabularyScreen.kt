@@ -63,6 +63,15 @@ fun VocabularyScreen(
         }
     }
 
+    // File picker for TXT export (backup)
+    val exportFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.exportToUri(context.contentResolver, it)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -128,6 +137,20 @@ fun VocabularyScreen(
                                 Icon(
                                     Icons.Default.FileUpload,
                                     contentDescription = "Import TXT",
+                                    tint = Primary
+                                )
+                            }
+
+                            // Export button
+                            IconButton(
+                                onClick = { exportFilePicker.launch("vocabulary_backup.txt") },
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(SurfaceVariant)
+                            ) {
+                                Icon(
+                                    Icons.Default.FileDownload,
+                                    contentDescription = "Export TXT",
                                     tint = Primary
                                 )
                             }

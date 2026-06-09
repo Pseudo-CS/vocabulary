@@ -1,5 +1,7 @@
 package com.pseudocs.vocabulary.ui.screens
 
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pseudocs.vocabulary.data.model.Word
@@ -87,6 +89,25 @@ class VocabularyViewModel @Inject constructor(
             } else {
                 wordRepository.addWords(words)
                 _message.value = "Imported ${words.size} word(s)."
+            }
+            clearMessageAfterDelay()
+        }
+    }
+
+    /**
+     * Export all words in the repository to a given backup URI.
+     */
+    fun exportToUri(contentResolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val words = wordRepository.getAllWords().first()
+                val fileContent = words.joinToString("\n") { it.word }
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(fileContent.toByteArray())
+                }
+                _message.value = "Backup exported successfully!"
+            } catch (e: Exception) {
+                _message.value = "Failed to export backup: ${e.message}"
             }
             clearMessageAfterDelay()
         }
