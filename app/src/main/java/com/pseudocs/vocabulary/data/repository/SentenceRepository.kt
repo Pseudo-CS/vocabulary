@@ -63,7 +63,7 @@ data class GeminiCandidate(
 // ---------- Gemini API Service ----------
 
 interface GeminiApiService {
-    @retrofit2.http.POST("v1beta/models/gemini-2.0-flash:generateContent")
+    @retrofit2.http.POST("v1beta/models/gemini-flash-latest:generateContent")
     suspend fun generateContent(
         @Query("key") apiKey: String,
         @retrofit2.http.Body request: GeminiRequest
@@ -120,6 +120,15 @@ interface DictionaryApiService {
     suspend fun getDefinition(@Path("word") word: String): List<DictionaryEntry>
 }
 
+sealed interface SentenceFetchResult {
+    data class Success(val sentence: ExampleSentence) : SentenceFetchResult
+    data class Failure(
+        val isTransient: Boolean,
+        val message: String,
+        val exception: Throwable? = null
+    ) : SentenceFetchResult
+}
+
 /**
  * Repository responsible for fetching example sentences from Wordnik or Gemini.
  */
@@ -172,29 +181,40 @@ class SentenceRepository @Inject constructor() {
             .create(DictionaryApiService::class.java)
     }
 
+    private fun isTransient(throwable: Throwable): Boolean {
+        return when (throwable) {
+            is java.io.IOException -> true
+            is retrofit2.HttpException -> {
+                val code = throwable.code()
+                code == 429 || code >= 500
+            }
+            else -> false
+        }
+    }
+
     /**
      * Fetches a random example sentence for [word] from Wordnik.
-     * Returns null on failure.
      */
-    suspend fun fetchWordnikSentence(word: String, apiKey: String): ExampleSentence? {
+    suspend fun fetchWordnikSentence(word: String, apiKey: String): SentenceFetchResult {
         return try {
             val response = wordnikService.getExamples(word, apiKey)
             val examples = response.examples?.filter { !it.text.isNullOrBlank() }
-            if (examples.isNullOrEmpty()) return null
-            // Pick a random sentence for variety
-            val picked = examples.random()
-            ExampleSentence(text = picked.text!!, source = "Wordnik")
+            if (examples.isNullOrEmpty()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "No examples found on Wordnik.")
+            } else {
+                val picked = examples.random()
+                SentenceFetchResult.Success(ExampleSentence(text = picked.text!!, source = "Wordnik"))
+            }
         } catch (e: Exception) {
             Log.e("SentenceRepo", "Wordnik fetch failed for '$word'", e)
-            null
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Wordnik error: ${e.message}", exception = e)
         }
     }
 
     /**
      * Generates a natural example sentence for [word] using the Gemini API.
-     * Returns null on failure.
      */
-    suspend fun fetchGeminiSentence(word: String, apiKey: String): ExampleSentence? {
+    suspend fun fetchGeminiSentence(word: String, apiKey: String): SentenceFetchResult {
         return try {
             val prompt = """
                 Generate 1 short, natural example sentence using the word:
@@ -226,37 +246,213 @@ class SentenceRepository @Inject constructor() {
                 ?.lines()
                 ?.firstOrNull { it.isNotBlank() }
 
-            if (text.isNullOrBlank()) null
-            else ExampleSentence(text = text, source = "Gemini")
-        } catch (e: retrofit2.HttpException) {
-            if (e.code() == 429) {
-                Log.w("SentenceRepo", "Gemini rate limited for '$word' — try again in a moment")
-                ExampleSentence(text = "(Gemini rate limit hit — try again in a moment)", source = "Gemini")
+            if (text.isNullOrBlank()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "Gemini returned empty content.")
             } else {
-                Log.e("SentenceRepo", "Gemini fetch failed for '$word' (HTTP ${e.code()})", e)
-                null
+                SentenceFetchResult.Success(ExampleSentence(text = text, source = "Gemini"))
             }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SentenceRepo", "Gemini fetch failed for '$word' (HTTP ${e.code()})", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini HTTP error ${e.code()}", exception = e)
         } catch (e: Exception) {
             Log.e("SentenceRepo", "Gemini fetch failed for '$word'", e)
-            null
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini error: ${e.message}", exception = e)
+        }
+    }
+
+    /**
+     * Generates a riddle for [word] using the Gemini API.
+     */
+    suspend fun fetchGeminiRiddle(word: String, apiKey: String): SentenceFetchResult {
+        return try {
+            val prompt = """
+                Create a short, intriguing riddle about or incorporating the word:
+                
+                $word
+                
+                Requirements:
+                - Keep it engaging, simple, and concise (1-3 sentences).
+                - Make it clear that the answer/concept relates to '$word'.
+                - Return only the riddle itself. Do not include introductory text, labels, or the answer.
+            """.trimIndent()
+
+            val request = GeminiRequest(
+                contents = listOf(
+                    GeminiContent(parts = listOf(GeminiPart(text = prompt)))
+                )
+            )
+            val response = geminiService.generateContent(apiKey, request)
+            val text = response.candidates
+                ?.firstOrNull()
+                ?.content
+                ?.parts
+                ?.firstOrNull()
+                ?.text
+                ?.trim()
+
+            if (text.isNullOrBlank()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "Gemini returned empty riddle.")
+            } else {
+                SentenceFetchResult.Success(ExampleSentence(text = text, source = "Gemini Riddle"))
+            }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SentenceRepo", "Gemini riddle fetch failed for '$word' (HTTP ${e.code()})", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini HTTP error ${e.code()}", exception = e)
+        } catch (e: Exception) {
+            Log.e("SentenceRepo", "Gemini riddle fetch failed for '$word'", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini error: ${e.message}", exception = e)
+        }
+    }
+
+    /**
+     * Generates a psychology fact for [word] using the Gemini API.
+     */
+    suspend fun fetchGeminiPsychologyFact(word: String, apiKey: String): SentenceFetchResult {
+        return try {
+            val prompt = """
+                Create a fascinating, educational psychology fact that incorporates or explains the word:
+                
+                $word
+                
+                Requirements:
+                - Keep it short, interesting, and concise (1-2 sentences).
+                - Use the word naturally or explain a psychological concept related to it.
+                - Return only the fact itself. Do not include introductory text or labels.
+            """.trimIndent()
+
+            val request = GeminiRequest(
+                contents = listOf(
+                    GeminiContent(parts = listOf(GeminiPart(text = prompt)))
+                )
+            )
+            val response = geminiService.generateContent(apiKey, request)
+            val text = response.candidates
+                ?.firstOrNull()
+                ?.content
+                ?.parts
+                ?.firstOrNull()
+                ?.text
+                ?.trim()
+
+            if (text.isNullOrBlank()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "Gemini returned empty psychology fact.")
+            } else {
+                SentenceFetchResult.Success(ExampleSentence(text = text, source = "Gemini Psychology Fact"))
+            }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SentenceRepo", "Gemini psychology fact fetch failed for '$word' (HTTP ${e.code()})", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini HTTP error ${e.code()}", exception = e)
+        } catch (e: Exception) {
+            Log.e("SentenceRepo", "Gemini psychology fact fetch failed for '$word'", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini error: ${e.message}", exception = e)
+        }
+    }
+
+    /**
+     * Generates a joke for [word] using the Gemini API.
+     */
+    suspend fun fetchGeminiJoke(word: String, apiKey: String): SentenceFetchResult {
+        return try {
+            val prompt = """
+                Create a funny, clean joke that incorporates or uses the word:
+                
+                $word
+                
+                Requirements:
+                - Keep it short, witty, and concise.
+                - Use the word naturally.
+                - Return only the joke itself. Do not include introductory text, labels, or explanations.
+            """.trimIndent()
+
+            val request = GeminiRequest(
+                contents = listOf(
+                    GeminiContent(parts = listOf(GeminiPart(text = prompt)))
+                )
+            )
+            val response = geminiService.generateContent(apiKey, request)
+            val text = response.candidates
+                ?.firstOrNull()
+                ?.content
+                ?.parts
+                ?.firstOrNull()
+                ?.text
+                ?.trim()
+
+            if (text.isNullOrBlank()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "Gemini returned empty joke.")
+            } else {
+                SentenceFetchResult.Success(ExampleSentence(text = text, source = "Gemini Joke"))
+            }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SentenceRepo", "Gemini joke fetch failed for '$word' (HTTP ${e.code()})", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini HTTP error ${e.code()}", exception = e)
+        } catch (e: Exception) {
+            Log.e("SentenceRepo", "Gemini joke fetch failed for '$word'", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini error: ${e.message}", exception = e)
+        }
+    }
+
+    /**
+     * Generates a dark humor joke for [word] using the Gemini API.
+     */
+    suspend fun fetchGeminiDarkJoke(word: String, apiKey: String): SentenceFetchResult {
+        return try {
+            val prompt = """
+                Create a witty, dark humor joke that incorporates or uses the word:
+                
+                $word
+                
+                Requirements:
+                - Keep it short and concise.
+                - Use dark humor / gallows humor safely and creatively.
+                - Use the word naturally.
+                - Return only the joke itself. Do not include introductory text, labels, or explanations.
+            """.trimIndent()
+
+            val request = GeminiRequest(
+                contents = listOf(
+                    GeminiContent(parts = listOf(GeminiPart(text = prompt)))
+                )
+            )
+            val response = geminiService.generateContent(apiKey, request)
+            val text = response.candidates
+                ?.firstOrNull()
+                ?.content
+                ?.parts
+                ?.firstOrNull()
+                ?.text
+                ?.trim()
+
+            if (text.isNullOrBlank()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "Gemini returned empty dark joke.")
+            } else {
+                SentenceFetchResult.Success(ExampleSentence(text = text, source = "Gemini Dark Joke"))
+            }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("SentenceRepo", "Gemini dark joke fetch failed for '$word' (HTTP ${e.code()})", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini HTTP error ${e.code()}", exception = e)
+        } catch (e: Exception) {
+            Log.e("SentenceRepo", "Gemini dark joke fetch failed for '$word'", e)
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Gemini error: ${e.message}", exception = e)
         }
     }
 
     /**
      * Fetches a random example sentence for [word] from vocabulary.com.
-     * Returns null on failure.
      */
-    suspend fun fetchVocabularyComSentence(word: String): ExampleSentence? {
+    suspend fun fetchVocabularyComSentence(word: String): SentenceFetchResult {
         return try {
             val response = vocabularyComService.getExamples(word)
             val sentences = response.sentences?.filter { !it.sentence.isNullOrBlank() }
-            if (sentences.isNullOrEmpty()) return null
-            // Pick a random sentence for variety
-            val picked = sentences.random()
-            ExampleSentence(text = picked.sentence!!, source = "Vocabulary.com")
+            if (sentences.isNullOrEmpty()) {
+                SentenceFetchResult.Failure(isTransient = false, message = "No examples found on Vocabulary.com.")
+            } else {
+                val picked = sentences.random()
+                SentenceFetchResult.Success(ExampleSentence(text = picked.sentence!!, source = "Vocabulary.com"))
+            }
         } catch (e: Exception) {
             Log.e("SentenceRepo", "Vocabulary.com fetch failed for '$word'", e)
-            null
+            SentenceFetchResult.Failure(isTransient = isTransient(e), message = "Vocabulary.com error: ${e.message}", exception = e)
         }
     }
 
@@ -264,45 +460,68 @@ class SentenceRepository @Inject constructor() {
      * Fetches an example sentence with automatic fallback logic.
      * Tries the preferred source, then falls back to other available sources.
      */
-    suspend fun fetchSentenceWithFallback(word: String, preferredSource: String, settings: AppSettings): ExampleSentence? {
+    suspend fun fetchSentenceWithFallback(word: String, preferredSource: String, settings: AppSettings): SentenceFetchResult {
+        // Special AI Modes handling
+        val activeModes = mutableListOf<String>()
+        if (settings.riddleMode) activeModes.add("riddle")
+        if (settings.psychologyFactsMode) activeModes.add("psychology")
+        if (settings.jokeMode) activeModes.add("joke")
+        if (settings.darkJokeMode) activeModes.add("dark_joke")
+
+        if (activeModes.isNotEmpty() && settings.geminiApiKey.isNotBlank()) {
+            val chosenMode = activeModes.random()
+            val specialResult = when (chosenMode) {
+                "riddle" -> fetchGeminiRiddle(word, settings.geminiApiKey)
+                "psychology" -> fetchGeminiPsychologyFact(word, settings.geminiApiKey)
+                "joke" -> fetchGeminiJoke(word, settings.geminiApiKey)
+                "dark_joke" -> fetchGeminiDarkJoke(word, settings.geminiApiKey)
+                else -> null
+            }
+
+            if (specialResult is SentenceFetchResult.Success) {
+                return specialResult
+            }
+            Log.d("SentenceRepo", "Special mode ($chosenMode) fetch failed, falling back to standard sentence fetch: ${(specialResult as? SentenceFetchResult.Failure)?.message}")
+        }
+
         val order = when (preferredSource) {
             SentenceSource.GEMINI.name -> listOf(SentenceSource.GEMINI, SentenceSource.WORDNIK, SentenceSource.VOCABULARY_COM)
             SentenceSource.WORDNIK.name -> listOf(SentenceSource.WORDNIK, SentenceSource.GEMINI, SentenceSource.VOCABULARY_COM)
             else -> listOf(SentenceSource.VOCABULARY_COM, SentenceSource.GEMINI, SentenceSource.WORDNIK)
         }
 
-        var fallbackCandidate: ExampleSentence? = null
+        val failures = mutableListOf<SentenceFetchResult.Failure>()
 
         for (source in order) {
             val result = when (source) {
                 SentenceSource.GEMINI -> {
                     if (settings.geminiApiKey.isNotBlank()) {
                         fetchGeminiSentence(word, settings.geminiApiKey)
-                    } else null
+                    } else {
+                        SentenceFetchResult.Failure(isTransient = false, message = "Gemini API key is blank.")
+                    }
                 }
                 SentenceSource.WORDNIK -> {
                     if (settings.wordnikApiKey.isNotBlank()) {
                         fetchWordnikSentence(word, settings.wordnikApiKey)
-                    } else null
+                    } else {
+                        SentenceFetchResult.Failure(isTransient = false, message = "Wordnik API key is blank.")
+                    }
                 }
                 SentenceSource.VOCABULARY_COM -> {
                     fetchVocabularyComSentence(word)
                 }
             }
 
-            if (result != null) {
-                // If it is a real sentence (not a rate limit message), return it immediately
-                if (!result.text.contains("rate limit", ignoreCase = true) && result.text.isNotBlank()) {
-                    return result
-                }
-                // Save the rate limit message as fallback candidate in case nothing else succeeds
-                if (fallbackCandidate == null) {
-                    fallbackCandidate = result
-                }
+            when (result) {
+                is SentenceFetchResult.Success -> return result
+                is SentenceFetchResult.Failure -> failures.add(result)
             }
         }
 
-        return fallbackCandidate
+        val hasTransientFailure = failures.any { it.isTransient }
+        val primaryErrorMessage = failures.firstOrNull()?.message ?: "Unknown error"
+        return SentenceFetchResult.Failure(isTransient = hasTransientFailure, message = primaryErrorMessage)
     }
 
     /**

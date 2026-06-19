@@ -9,6 +9,7 @@ import com.pseudocs.vocabulary.data.local.SentenceSource
 import com.pseudocs.vocabulary.data.local.SettingsDataStore
 import com.pseudocs.vocabulary.data.model.ExampleSentence
 import com.pseudocs.vocabulary.data.model.Word
+import com.pseudocs.vocabulary.data.repository.SentenceFetchResult
 import com.pseudocs.vocabulary.data.repository.SentenceRepository
 import com.pseudocs.vocabulary.data.repository.WordRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -105,15 +106,31 @@ class WordDetailViewModel @Inject constructor(
         }
         val settings = settingsDataStore.settingsFlow.first()
 
-        val sentence = sentenceRepository.fetchSentenceWithFallback(wordText, settings.sentenceSource, settings)
+        val result = sentenceRepository.fetchSentenceWithFallback(wordText, settings.sentenceSource, settings)
 
         _uiState.update {
-            it.copy(
-                sentence = sentence,
-                isLoading = false,
-                error = if (sentence == null) "Could not fetch examples. Try again." else null,
-                sourceLabel = sentence?.source ?: ""
-            )
+            when (result) {
+                is SentenceFetchResult.Success -> {
+                    it.copy(
+                        sentence = result.sentence,
+                        isLoading = false,
+                        error = null,
+                        sourceLabel = result.sentence.source
+                    )
+                }
+                is SentenceFetchResult.Failure -> {
+                    it.copy(
+                        sentence = null,
+                        isLoading = false,
+                        error = if (result.isTransient) {
+                            "Network error. Please check your internet connection."
+                        } else {
+                            result.message
+                        },
+                        sourceLabel = ""
+                    )
+                }
+            }
         }
     }
 

@@ -21,6 +21,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Vocabulary">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -31,6 +32,11 @@
         <!-- Notification receiver to open app on tap -->
         <receiver
             android:name=".notification.NotificationReceiver"
+            android:exported="false" />
+
+        <!-- Alarm receiver to handle daily notification trigger -->
+        <receiver
+            android:name=".notification.NotificationAlarmReceiver"
             android:exported="false" />
 
         <!-- Boot receiver to reschedule notifications after reboot -->

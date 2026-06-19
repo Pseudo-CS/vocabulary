@@ -24,6 +24,10 @@ object SettingsKeys {
     val WORDNIK_API_KEY = stringPreferencesKey("wordnik_api_key")
     val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+    val RIDDLE_MODE = booleanPreferencesKey("riddle_mode")
+    val PSYCHOLOGY_FACTS_MODE = booleanPreferencesKey("psychology_facts_mode")
+    val JOKE_MODE = booleanPreferencesKey("joke_mode")
+    val DARK_JOKE_MODE = booleanPreferencesKey("dark_joke_mode")
 }
 
 /**
@@ -35,7 +39,11 @@ data class AppSettings(
     val sentenceSource: String = SentenceSource.GEMINI.name,
     val wordnikApiKey: String = "",
     val geminiApiKey: String = "",
-    val notificationsEnabled: Boolean = false
+    val notificationsEnabled: Boolean = false,
+    val riddleMode: Boolean = false,
+    val psychologyFactsMode: Boolean = false,
+    val jokeMode: Boolean = false,
+    val darkJokeMode: Boolean = false
 )
 
 enum class SentenceSource {
@@ -58,7 +66,11 @@ class SettingsDataStore @Inject constructor(
                 sentenceSource = prefs[SettingsKeys.SENTENCE_SOURCE] ?: SentenceSource.GEMINI.name,
                 wordnikApiKey = prefs[SettingsKeys.WORDNIK_API_KEY] ?: "",
                 geminiApiKey = prefs[SettingsKeys.GEMINI_API_KEY] ?: "",
-                notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: false
+                notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: false,
+                riddleMode = prefs[SettingsKeys.RIDDLE_MODE] ?: false,
+                psychologyFactsMode = prefs[SettingsKeys.PSYCHOLOGY_FACTS_MODE] ?: false,
+                jokeMode = prefs[SettingsKeys.JOKE_MODE] ?: false,
+                darkJokeMode = prefs[SettingsKeys.DARK_JOKE_MODE] ?: false
             )
         }
 
@@ -90,6 +102,30 @@ class SettingsDataStore @Inject constructor(
     suspend fun updateNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[SettingsKeys.NOTIFICATIONS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateRiddleMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.RIDDLE_MODE] = enabled
+        }
+    }
+
+    suspend fun updatePsychologyFactsMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.PSYCHOLOGY_FACTS_MODE] = enabled
+        }
+    }
+
+    suspend fun updateJokeMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.JOKE_MODE] = enabled
+        }
+    }
+
+    suspend fun updateDarkJokeMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SettingsKeys.DARK_JOKE_MODE] = enabled
         }
     }
 }

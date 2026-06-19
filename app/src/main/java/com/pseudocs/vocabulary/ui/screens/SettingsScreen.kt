@@ -236,6 +236,156 @@ fun SettingsScreen(
                 }
             }
 
+            // ── Special AI Modes Section ──
+            SettingsSectionHeader("Special AI Modes")
+
+            SettingsCard {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Riddle Mode Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Riddle Mode",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = OnSurface
+                            )
+                            Text(
+                                "Receive a daily riddle incorporating the word (requires Gemini API Key)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.riddleMode,
+                            onCheckedChange = { enabled ->
+                                viewModel.toggleRiddleMode(enabled)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnPrimary,
+                                checkedTrackColor = Primary
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = SurfaceVariant
+                    )
+
+                    // Psychology Facts Mode Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Psychology Facts Mode",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = OnSurface
+                            )
+                            Text(
+                                "Receive an interesting psychology fact incorporating the word (requires Gemini API Key)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.psychologyFactsMode,
+                            onCheckedChange = { enabled ->
+                                viewModel.togglePsychologyFactsMode(enabled)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnPrimary,
+                                checkedTrackColor = Primary
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = SurfaceVariant
+                    )
+
+                    // Joke Mode Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Joke Mode",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = OnSurface
+                            )
+                            Text(
+                                "Receive a daily joke incorporating the word (requires Gemini API Key)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.jokeMode,
+                            onCheckedChange = { enabled ->
+                                viewModel.toggleJokeMode(enabled)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnPrimary,
+                                checkedTrackColor = Primary
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        color = SurfaceVariant
+                    )
+
+                    // Dark Joke Mode Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Dark Joke Mode",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = OnSurface
+                            )
+                            Text(
+                                "Receive a daily dark humor joke incorporating the word (requires Gemini API Key)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.darkJokeMode,
+                            onCheckedChange = { enabled ->
+                                viewModel.toggleDarkJokeMode(enabled)
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = OnPrimary,
+                                checkedTrackColor = Primary
+                            )
+                        )
+                    }
+                }
+            }
+
             // ── API Keys Section ──
             SettingsSectionHeader("API Keys")
 

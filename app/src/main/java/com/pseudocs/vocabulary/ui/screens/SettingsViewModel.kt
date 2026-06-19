@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.pseudocs.vocabulary.data.local.AppSettings
 import com.pseudocs.vocabulary.data.local.SettingsDataStore
-import com.pseudocs.vocabulary.notification.DailyNotificationWorker
+import com.pseudocs.vocabulary.notification.NotificationScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
@@ -34,7 +34,7 @@ class SettingsViewModel @Inject constructor(
             settingsDataStore.updateNotificationTime(hour, minute)
             // Reschedule the notification with new time
             if (settings.value.notificationsEnabled) {
-                DailyNotificationWorker.schedule(context, hour, minute)
+                NotificationScheduler.schedule(context, hour, minute)
             }
         }
     }
@@ -61,14 +61,38 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsDataStore.updateNotificationsEnabled(enabled)
             if (enabled) {
-                DailyNotificationWorker.schedule(
+                NotificationScheduler.schedule(
                     context,
                     settings.value.notificationHour,
                     settings.value.notificationMinute
                 )
             } else {
-                DailyNotificationWorker.cancel(context)
+                NotificationScheduler.cancel(context)
             }
+        }
+    }
+
+    fun toggleRiddleMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.updateRiddleMode(enabled)
+        }
+    }
+
+    fun togglePsychologyFactsMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.updatePsychologyFactsMode(enabled)
+        }
+    }
+
+    fun toggleJokeMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.updateJokeMode(enabled)
+        }
+    }
+
+    fun toggleDarkJokeMode(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.updateDarkJokeMode(enabled)
         }
     }
 }

@@ -1,37 +1,24 @@
 package com.pseudocs.vocabulary.notification
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
-import com.pseudocs.vocabulary.MainActivity
-import com.pseudocs.vocabulary.R
-import com.pseudocs.vocabulary.data.local.AppSettings
-import com.pseudocs.vocabulary.data.local.SentenceSource
 import com.pseudocs.vocabulary.data.local.SettingsDataStore
+import com.pseudocs.vocabulary.data.repository.SentenceFetchResult
 import com.pseudocs.vocabulary.data.repository.SentenceRepository
 import com.pseudocs.vocabulary.data.repository.WordRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
 
 const val CHANNEL_ID = "vocabulary_channel_v2"
 const val NOTIFICATION_ID = 1001
 const val WORD_ID_EXTRA = "word_id"
 
 /**
- * HiltWorker that fires once daily to send a "Word of the Day" notification.
+ * HiltWorker that fires to send a "Word of the Day" notification.
  * Picks a random word, fetches an example sentence, and displays a notification.
- * After running, it re-schedules itself for the next day.
  */
 @HiltWorker
 class DailyNotificationWorker @AssistedInject constructor(
@@ -39,7 +26,8 @@ class DailyNotificationWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val wordRepository: WordRepository,
     private val sentenceRepository: SentenceRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsDataStore: SettingsDataStore,
+    private val notificationHelper: NotificationHelper
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
@@ -49,11 +37,6 @@ class DailyNotificationWorker @AssistedInject constructor(
             Log.d("VocabWorker", "doWork: isManual=$isManual, source=${settings.sentenceSource}, geminiKeyBlank=${settings.geminiApiKey.isBlank()}, wordnikKeyBlank=${settings.wordnikApiKey.isBlank()}, notificationsEnabled=${settings.notificationsEnabled}")
             if (!isManual && !settings.notificationsEnabled) return Result.success()
 
-            // Re-schedule for tomorrow at the same time if this is not a manual trigger
-            if (!isManual) {
-                scheduleTomorrow(context, settings.notificationHour, settings.notificationMinute)
-            }
-
             val word = wordRepository.getRandomWord()
             if (word == null) {
                 Log.d("VocabWorker", "No words available in the repository.")
@@ -62,88 +45,34 @@ class DailyNotificationWorker @AssistedInject constructor(
             Log.d("VocabWorker", "Selected word: ${word.word}")
 
             // Fetch sentence based on the configured source with automatic fallbacks
-            val sentence = sentenceRepository.fetchSentenceWithFallback(word.word, settings.sentenceSource, settings)
-            Log.d("VocabWorker", "Fetched sentence: $sentence")
+            val result = sentenceRepository.fetchSentenceWithFallback(word.word, settings.sentenceSource, settings)
+            Log.d("VocabWorker", "Fetched sentence result: $result")
 
-            showNotification(word.word, sentence?.text, word.id, settings)
-
-            Result.success()
+            when (result) {
+                is SentenceFetchResult.Success -> {
+                    notificationHelper.showNotification(
+                        word.word,
+                        result.sentence.text,
+                        word.id,
+                        settings,
+                        result.sentence.source
+                    )
+                    Result.success()
+                }
+                is SentenceFetchResult.Failure -> {
+                    if (result.isTransient) {
+                        Log.d("VocabWorker", "Transient network error, retrying worker: ${result.message}")
+                        Result.retry()
+                    } else {
+                        // Permanent failure: show notification without example sentence and succeed
+                        notificationHelper.showNotification(word.word, null, word.id, settings)
+                        Result.success()
+                    }
+                }
+            }
         } catch (e: Exception) {
+            Log.e("VocabWorker", "Error in doWork", e)
             Result.retry()
-        }
-    }
-
-    private fun showNotification(word: String, sentence: String?, wordId: Long, settings: AppSettings) {
-        val notificationManager =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        // Use HIGH importance so the notification pops up as a heads-up banner,
-        // showing the sentence immediately without requiring the user to pull down the shade.
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "Word of the Day",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Daily vocabulary word notifications"
-        }
-        notificationManager.createNotificationChannel(channel)
-
-        // Intent to open the app at the word details screen
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(WORD_ID_EXTRA, wordId)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Build the body: show the sentence directly, or a clear fallback
-        val isNetworkAvailable = isNetworkAvailable(context)
-        val bodyText = if (!sentence.isNullOrBlank()) {
-            sentence
-        } else if (!isNetworkAvailable) {
-            "Tap to see details. (Offline — could not fetch example sentence)"
-        } else {
-            val preferredSource = settings.sentenceSource
-            val isKeyMissing = when (preferredSource) {
-                SentenceSource.GEMINI.name -> settings.geminiApiKey.isBlank()
-                SentenceSource.WORDNIK.name -> settings.wordnikApiKey.isBlank()
-                else -> false
-            }
-            if (isKeyMissing) {
-                "No API key configured for $preferredSource — add one in Settings to get example sentences."
-            } else {
-                "Tap to see details. (Could not fetch example sentence)"
-            }
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_v)
-            .setContentTitle("Word of the Day: ${word.uppercase()}")
-            // contentText is what's shown in collapsed/banner view
-            .setContentText(bodyText)
-            // BigTextStyle ensures the full sentence is visible when expanded
-            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-            // HIGH priority pairs with IMPORTANCE_HIGH channel to show as a banner
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .build()
-
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun isNetworkAvailable(context: Context): Boolean {
-        return try {
-            val connectivityManager =
-                context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val activeNetwork = connectivityManager.activeNetwork ?: return false
-            val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        } catch (e: Exception) {
-            Log.w("VocabWorker", "Failed to check network availability, assuming online", e)
-            true
         }
     }
 
@@ -159,56 +88,6 @@ class DailyNotificationWorker @AssistedInject constructor(
                 .setInputData(workDataOf("is_manual" to true))
                 .build()
             WorkManager.getInstance(context).enqueue(request)
-        }
-
-        /**
-         * Schedule the worker to run once at the given hour/minute.
-         */
-        fun schedule(
-            context: Context,
-            hour: Int,
-            minute: Int,
-            policy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE
-        ) {
-            val delay = calculateDelayMillis(hour, minute)
-            val request = OneTimeWorkRequestBuilder<DailyNotificationWorker>()
-                .setInitialDelay(delay, TimeUnit.MILLISECONDS)
-                .addTag(WORK_TAG)
-                .build()
-
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                WORK_TAG,
-                policy,
-                request
-            )
-        }
-
-        /**
-         * Cancel any scheduled notification work.
-         */
-        fun cancel(context: Context) {
-            WorkManager.getInstance(context).cancelAllWorkByTag(WORK_TAG)
-        }
-
-        private fun scheduleTomorrow(context: Context, hour: Int, minute: Int) {
-            schedule(context, hour, minute)
-        }
-
-        /**
-         * Calculates the delay in milliseconds until the next occurrence of [hour]:[minute].
-         */
-        fun calculateDelayMillis(hour: Int, minute: Int): Long {
-            val now = Calendar.getInstance()
-            val target = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, hour)
-                set(Calendar.MINUTE, minute)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            if (target.timeInMillis <= now.timeInMillis) {
-                target.add(Calendar.DAY_OF_YEAR, 1)
-            }
-            return target.timeInMillis - now.timeInMillis
         }
     }
 }
